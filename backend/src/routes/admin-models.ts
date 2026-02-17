@@ -161,7 +161,7 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
         reply.status(500);
         return {
           error: 'CREATE_MODEL_FAILED',
-          message: error.message || 'Failed to create model',
+          message: `Failed to create model '${model_name}'. Please check the configuration and try again.`,
           statusCode: 500,
         };
       }
@@ -380,7 +380,7 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
         reply.status(statusCode);
         return {
           error: 'UPDATE_MODEL_FAILED',
-          message: error.message || 'Failed to update model',
+          message: `Failed to update model '${modelId}'. Please check the configuration and try again.`,
           statusCode,
         };
       }
@@ -470,7 +470,7 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
         reply.status(statusCode);
         return {
           error: 'DELETE_MODEL_FAILED',
-          message: error.message || 'Failed to delete model',
+          message: `Failed to delete model '${modelId}'. Please try again or contact an administrator.`,
           statusCode,
         };
       }
