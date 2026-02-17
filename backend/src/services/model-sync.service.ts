@@ -396,7 +396,7 @@ export class ModelSyncService {
    * Mark a model as unavailable with cascade operations
    * Returns statistics about the cascade operations performed
    */
-  private async markModelUnavailable(modelId: string): Promise<{
+  async markModelUnavailable(modelId: string): Promise<{
     subscriptionsDeactivated: number;
     apiKeyModelAssociationsRemoved: number;
     orphanedApiKeysDeactivated: number;

@@ -501,15 +501,19 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
           [user.userId, 'MODEL_DELETE', 'MODEL', modelId, JSON.stringify({ modelId })],
         );
 
-        // Directly mark the model as unavailable instead of relying on sync
+        // Mark model unavailable with full cascade (deactivate subscriptions, remove API key associations)
         try {
+          const cascadeResult = await modelSyncService.markModelUnavailable(modelId);
+          fastify.log.info(
+            { modelId, cascadeResult },
+            'Model marked as unavailable with cascade operations',
+          );
+        } catch (dbError) {
+          fastify.log.warn({ dbError, modelId }, 'Failed cascade - falling back to simple update');
           await fastify.dbUtils.query(
             `UPDATE models SET availability = 'unavailable', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
             [modelId],
           );
-          fastify.log.info({ modelId }, 'Model marked as unavailable in local database');
-        } catch (dbError) {
-          fastify.log.warn({ dbError, modelId }, 'Failed to mark model unavailable directly');
         }
 
         // Clear cache so subsequent reads are fresh
