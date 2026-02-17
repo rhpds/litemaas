@@ -91,6 +91,82 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
         // Create model in LiteLLM
         const liteLLMResponse = await liteLLMService.createModel(liteLLMPayload);
 
+        // Extract the LiteLLM model ID from the response
+        const litellmModelId = liteLLMResponse?.model_info?.id || null;
+
+        // Directly insert/update the local models table instead of relying on syncModels
+        // This ensures the model is immediately available in the frontend
+        try {
+          const features = [];
+          if (supports_function_calling) features.push('function_calling');
+          if (supports_parallel_function_calling) features.push('parallel_function_calling');
+          if (supports_tool_choice) features.push('tool_choice');
+          if (supports_vision) features.push('vision');
+          features.push('chat');
+
+          await fastify.dbUtils.query(
+            `INSERT INTO models (id, name, provider, description, category, context_length,
+              input_cost_per_token, output_cost_per_token, supports_vision, supports_function_calling,
+              supports_tool_choice, supports_parallel_function_calling, supports_streaming,
+              features, availability, version, api_base, tpm, rpm, max_tokens,
+              litellm_model_id, backend_model_name, restricted_access)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+            ON CONFLICT (id) DO UPDATE SET
+              availability = 'available',
+              litellm_model_id = COALESCE($21, models.litellm_model_id),
+              description = COALESCE($4, models.description),
+              backend_model_name = COALESCE($22, models.backend_model_name),
+              restricted_access = COALESCE($23, models.restricted_access),
+              input_cost_per_token = $7,
+              output_cost_per_token = $8,
+              api_base = $17,
+              tpm = $18,
+              rpm = $19,
+              max_tokens = $20,
+              updated_at = CURRENT_TIMESTAMP`,
+            [
+              model_name,                    // $1 id
+              model_name,                    // $2 name
+              'openai',                      // $3 provider
+              description || null,           // $4 description
+              'Language Model',              // $5 category
+              max_tokens || null,            // $6 context_length
+              input_cost_per_token || null,  // $7
+              output_cost_per_token || null, // $8
+              supports_vision || false,      // $9
+              supports_function_calling || false, // $10
+              supports_tool_choice || false, // $11
+              supports_parallel_function_calling || false, // $12
+              true,                          // $13 supports_streaming
+              features,                      // $14
+              'available',                   // $15 availability
+              '1.0',                         // $16 version
+              api_base || null,              // $17
+              tpm || null,                   // $18
+              rpm || null,                   // $19
+              max_tokens || null,            // $20
+              litellmModelId,                // $21
+              backend_model_name || null,    // $22
+              restrictedAccess !== undefined ? restrictedAccess : false, // $23
+            ],
+          );
+
+          fastify.log.info(
+            { model_name, litellmModelId },
+            'Model directly inserted/updated in local database',
+          );
+        } catch (dbError) {
+          fastify.log.warn({ dbError, model_name }, 'Failed to directly insert model - falling back to sync');
+          // Fall back to sync approach
+          try {
+            await liteLLMService.clearCache('models:');
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            await modelSyncService.syncModels({ forceUpdate: true });
+          } catch (syncError) {
+            fastify.log.warn({ syncError }, 'Sync also failed after model creation');
+          }
+        }
+
         // Log admin action
         await fastify.dbUtils.query(
           `INSERT INTO audit_logs (user_id, action, resource_type, resource_id, metadata)
@@ -99,7 +175,7 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
             user.userId,
             'MODEL_CREATE',
             'MODEL',
-            liteLLMResponse?.model_name || model_name,
+            model_name,
             JSON.stringify({
               model_name,
               description,
@@ -114,37 +190,10 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
               supports_parallel_function_calling,
               supports_tool_choice,
               restrictedAccess,
+              litellmModelId,
             }),
           ],
         );
-
-        // Clear cache and synchronize models after creation with a delay
-        // to allow LiteLLM to commit the new model to its database.
-        try {
-          await liteLLMService.clearCache('models:');
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          await modelSyncService.syncModels({ forceUpdate: true });
-
-          // Update the description if provided by the user
-          if (description) {
-            await fastify.dbUtils.query('UPDATE models SET description = $1 WHERE id = $2', [
-              description,
-              model_name,
-            ]);
-          }
-
-          // Update the restrictedAccess flag if provided
-          if (restrictedAccess !== undefined) {
-            await fastify.dbUtils.query('UPDATE models SET restricted_access = $1 WHERE id = $2', [
-              restrictedAccess,
-              model_name,
-            ]);
-          }
-
-          fastify.log.info('Model synchronization completed after model creation');
-        } catch (syncError) {
-          fastify.log.warn({ syncError }, 'Model synchronization failed after model creation');
-        }
 
         reply.status(201);
         return {
@@ -452,15 +501,19 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
           [user.userId, 'MODEL_DELETE', 'MODEL', modelId, JSON.stringify({ modelId })],
         );
 
-        // Clear model cache and synchronize after deletion
+        // Directly mark the model as unavailable instead of relying on sync
         try {
-          await liteLLMService.clearCache('models:');
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          await modelSyncService.syncModels({ forceUpdate: true });
-          fastify.log.info('Model synchronization completed after model deletion');
-        } catch (syncError) {
-          fastify.log.warn({ syncError }, 'Model synchronization failed after model deletion');
+          await fastify.dbUtils.query(
+            `UPDATE models SET availability = 'unavailable', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [modelId],
+          );
+          fastify.log.info({ modelId }, 'Model marked as unavailable in local database');
+        } catch (dbError) {
+          fastify.log.warn({ dbError, modelId }, 'Failed to mark model unavailable directly');
         }
+
+        // Clear cache so subsequent reads are fresh
+        await liteLLMService.clearCache('models:');
 
         return {
           success: true,
