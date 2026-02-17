@@ -56,9 +56,30 @@ export class ModelSyncService {
 
       // Fetch models from LiteLLM (always refresh, never use cache)
       const litellmModels = await this.litellmService.getModels({ refresh: true });
-      result.totalModels = litellmModels.length;
 
-      if (litellmModels.length === 0) {
+      // Cross-reference with LiteLLM's actual database to filter out stale cached entries.
+      // LiteLLM's /model/info API may return models from Redis cache even after deletion.
+      // The LiteLLM_ProxyModelTable is the source of truth for what models actually exist.
+      const dbModelsResult = await this.fastify.dbUtils.query(
+        `SELECT model_name FROM "LiteLLM_ProxyModelTable"`,
+      );
+      const dbModelNames = new Set(dbModelsResult.rows.map((r: any) => r.model_name));
+
+      // Only process models that exist in both the API response AND the database
+      const verifiedModels = litellmModels.filter((m: any) => {
+        if (dbModelNames.has(m.model_name)) {
+          return true;
+        }
+        this.fastify.log.warn(
+          { model_name: m.model_name },
+          'Skipping model from LiteLLM API - not found in LiteLLM database (stale cache entry)',
+        );
+        return false;
+      });
+
+      result.totalModels = verifiedModels.length;
+
+      if (verifiedModels.length === 0) {
         this.fastify.log.info(
           'No models found in LiteLLM - will mark all local models as unavailable',
         );
@@ -67,10 +88,10 @@ export class ModelSyncService {
       // Get existing models from database
       const existingModels = await this.getExistingModels();
       const existingModelIds = new Set(existingModels.map((m) => m.id));
-      const litellmModelIds = new Set(litellmModels.map((m) => m.model_name));
+      const litellmModelIds = new Set(verifiedModels.map((m: any) => m.model_name));
 
-      // Process each LiteLLM model
-      for (const litellmModel of litellmModels) {
+      // Process each verified LiteLLM model
+      for (const litellmModel of verifiedModels) {
         try {
           const modelId = litellmModel.model_name;
           if (existingModelIds.has(modelId)) {

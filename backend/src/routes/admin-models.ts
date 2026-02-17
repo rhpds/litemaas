@@ -501,20 +501,22 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
           [user.userId, 'MODEL_DELETE', 'MODEL', modelId, JSON.stringify({ modelId })],
         );
 
-        // Mark model unavailable with full cascade (deactivate subscriptions, remove API key associations)
+        // Cascade operations: deactivate subscriptions, remove API key associations
         try {
           const cascadeResult = await modelSyncService.markModelUnavailable(modelId);
           fastify.log.info(
             { modelId, cascadeResult },
-            'Model marked as unavailable with cascade operations',
+            'Cascade operations completed (subscriptions deactivated, API key associations removed)',
           );
         } catch (dbError) {
-          fastify.log.warn({ dbError, modelId }, 'Failed cascade - falling back to simple update');
-          await fastify.dbUtils.query(
-            `UPDATE models SET availability = 'unavailable', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-            [modelId],
-          );
+          fastify.log.warn({ dbError, modelId }, 'Cascade operations failed - proceeding with delete');
         }
+
+        // Delete the model row entirely from the local database.
+        // This prevents syncModels from resurrecting the model if LiteLLM's
+        // stale cache still returns it during the brief post-delete window.
+        await fastify.dbUtils.query(`DELETE FROM models WHERE id = $1`, [modelId]);
+        fastify.log.info({ modelId }, 'Model row deleted from local database');
 
         // Clear cache so subsequent reads are fresh
         await liteLLMService.clearCache('models:');
