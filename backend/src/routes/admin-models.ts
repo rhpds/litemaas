@@ -118,8 +118,10 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
           ],
         );
 
-        // Synchronize models after creation
+        // Synchronize models after creation with a delay to allow LiteLLM
+        // to commit the new model to its database before we query it.
         try {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
           await modelSyncService.syncModels({ forceUpdate: true });
 
           // Update the description if provided by the user
@@ -294,8 +296,9 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
           [user.userId, 'MODEL_UPDATE', 'MODEL', modelId, JSON.stringify({ modelId, updateData })],
         );
 
-        // Synchronize models after update
+        // Synchronize models after update with delay for LiteLLM DB commit
         try {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
           await modelSyncService.syncModels({ forceUpdate: true });
 
           // Update the description if provided by the user
@@ -426,7 +429,7 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Delete model from LiteLLM using the correct LiteLLM model ID
         await liteLLMService.deleteModel(modelRecord.litellm_model_id);
-        console.log('Model deleted from LiteLLM');
+        fastify.log.info({ modelId }, 'Model deleted from LiteLLM');
 
         // Log admin action
         await fastify.dbUtils.query(
@@ -435,8 +438,9 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
           [user.userId, 'MODEL_DELETE', 'MODEL', modelId, JSON.stringify({ modelId })],
         );
 
-        // Synchronize models after deletion
+        // Synchronize models after deletion with delay for LiteLLM DB commit
         try {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
           await modelSyncService.syncModels({ forceUpdate: true });
           fastify.log.info('Model synchronization completed after model deletion');
         } catch (syncError) {
