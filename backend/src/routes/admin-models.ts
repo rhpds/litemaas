@@ -118,9 +118,10 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
           ],
         );
 
-        // Synchronize models after creation with a delay to allow LiteLLM
-        // to commit the new model to its database before we query it.
+        // Clear cache and synchronize models after creation with a delay
+        // to allow LiteLLM to commit the new model to its database.
         try {
+          await liteLLMService.clearCache('models:');
           await new Promise((resolve) => setTimeout(resolve, 2000));
           await modelSyncService.syncModels({ forceUpdate: true });
 
@@ -296,8 +297,9 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
           [user.userId, 'MODEL_UPDATE', 'MODEL', modelId, JSON.stringify({ modelId, updateData })],
         );
 
-        // Synchronize models after update with delay for LiteLLM DB commit
+        // Clear cache and synchronize models after update
         try {
+          await liteLLMService.clearCache('models:');
           await new Promise((resolve) => setTimeout(resolve, 2000));
           await modelSyncService.syncModels({ forceUpdate: true });
 
@@ -450,8 +452,9 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
           [user.userId, 'MODEL_DELETE', 'MODEL', modelId, JSON.stringify({ modelId })],
         );
 
-        // Synchronize models after deletion with delay for LiteLLM DB commit
+        // Clear model cache and synchronize after deletion
         try {
+          await liteLLMService.clearCache('models:');
           await new Promise((resolve) => setTimeout(resolve, 2000));
           await modelSyncService.syncModels({ forceUpdate: true });
           fastify.log.info('Model synchronization completed after model deletion');
