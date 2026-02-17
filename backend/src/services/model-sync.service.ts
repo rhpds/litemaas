@@ -54,8 +54,8 @@ export class ModelSyncService {
     try {
       this.fastify.log.info('Starting model synchronization from LiteLLM...');
 
-      // Fetch models from LiteLLM
-      const litellmModels = await this.litellmService.getModels();
+      // Fetch models from LiteLLM (always refresh, never use cache)
+      const litellmModels = await this.litellmService.getModels({ refresh: true });
       result.totalModels = litellmModels.length;
 
       if (litellmModels.length === 0) {
