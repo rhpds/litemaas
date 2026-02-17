@@ -88,7 +88,6 @@ export class ModelSyncService {
       // Get existing models from database
       const existingModels = await this.getExistingModels();
       const existingModelIds = new Set(existingModels.map((m) => m.id));
-      const litellmModelIds = new Set(verifiedModels.map((m: any) => m.model_name));
 
       // Process each verified LiteLLM model
       for (const litellmModel of verifiedModels) {
@@ -116,10 +115,11 @@ export class ModelSyncService {
         }
       }
 
-      // Mark unavailable models
+      // Mark unavailable models — use LiteLLM's database table as source of truth,
+      // NOT the API response (which may have cache lag for newly created models).
       if (markUnavailable) {
         const unavailableModelIds = Array.from(existingModelIds).filter(
-          (id) => !litellmModelIds.has(id),
+          (id) => !dbModelNames.has(id),
         );
         for (const modelId of unavailableModelIds) {
           try {
