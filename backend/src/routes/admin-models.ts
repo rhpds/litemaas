@@ -428,8 +428,20 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         // Delete model from LiteLLM using the correct LiteLLM model ID
-        await liteLLMService.deleteModel(modelRecord.litellm_model_id);
-        fastify.log.info({ modelId }, 'Model deleted from LiteLLM');
+        try {
+          await liteLLMService.deleteModel(modelRecord.litellm_model_id);
+          fastify.log.info({ modelId, litellmModelId: modelRecord.litellm_model_id }, 'Model deleted from LiteLLM');
+        } catch (deleteError: any) {
+          // If model is already gone from LiteLLM (404), proceed with local cleanup
+          if (deleteError.statusCode === 404 || (deleteError.message && deleteError.message.includes('not found'))) {
+            fastify.log.warn(
+              { modelId, litellmModelId: modelRecord.litellm_model_id },
+              'Model not found in LiteLLM (already deleted) - proceeding with local cleanup',
+            );
+          } else {
+            throw deleteError;
+          }
+        }
 
         // Log admin action
         await fastify.dbUtils.query(
