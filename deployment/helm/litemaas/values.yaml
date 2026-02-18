@@ -193,6 +193,12 @@ backend:
     tpmLimit: "100000"
     rpmLimit: "120"
 
+  # -- Redis connection for flushing LiteLLM's cache after model CRUD operations.
+  # If host is empty, Redis cache flush is disabled (non-fatal).
+  redis:
+    host: ""
+    port: "6379"
+
   # -- Set to "0" to disable TLS verification (not recommended for production)
   nodeTlsRejectUnauthorized: ""
 

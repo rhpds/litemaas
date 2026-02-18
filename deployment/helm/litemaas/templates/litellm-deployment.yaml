@@ -57,6 +57,8 @@ spec:
               value: "PRODUCTION"
             - name: STORE_MODEL_IN_DB
               value: "True"
+            - name: DISABLE_SCHEMA_UPDATE
+              value: "true"
           resources:
             {{- toYaml .Values.litellm.resources | nindent 12 }}
           livenessProbe:
