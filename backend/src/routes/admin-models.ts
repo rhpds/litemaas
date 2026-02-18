@@ -512,9 +512,11 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
           fastify.log.warn({ dbError, modelId }, 'Cascade operations failed - proceeding with delete');
         }
 
-        // Delete the model row entirely from the local database.
-        // This prevents syncModels from resurrecting the model if LiteLLM's
-        // stale cache still returns it during the brief post-delete window.
+        // Delete referencing rows then the model row itself.
+        // The cascade above deactivates subscriptions but doesn't delete the rows,
+        // so we must remove them to satisfy the foreign key constraint.
+        await fastify.dbUtils.query(`DELETE FROM subscription_status_history WHERE subscription_id IN (SELECT id FROM subscriptions WHERE model_id = $1)`, [modelId]);
+        await fastify.dbUtils.query(`DELETE FROM subscriptions WHERE model_id = $1`, [modelId]);
         await fastify.dbUtils.query(`DELETE FROM models WHERE id = $1`, [modelId]);
         fastify.log.info({ modelId }, 'Model row deleted from local database');
 
