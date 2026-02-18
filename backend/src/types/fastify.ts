@@ -29,6 +29,10 @@ declare module 'fastify' {
       OAUTH_CALLBACK_URL: string;
       K8S_API_SKIP_TLS_VERIFY?: string;
 
+      // Redis (optional)
+      REDIS_HOST?: string;
+      REDIS_PORT: string;
+
       // LiteLLM
       LITELLM_API_URL: string;
       LITELLM_API_KEY?: string;

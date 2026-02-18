@@ -155,6 +155,9 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
             { model_name, litellmModelId },
             'Model directly inserted/updated in local database',
           );
+
+          // Flush LiteLLM's Redis cache so all proxy pods pick up the new model
+          await fastify.flushLiteLLMCache();
         } catch (dbError) {
           fastify.log.warn({ dbError, model_name }, 'Failed to directly insert model - falling back to sync');
           // Fall back to sync approach
@@ -339,6 +342,9 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
         // Update model in LiteLLM using the correct LiteLLM model ID
         await liteLLMService.updateModel(modelRecord.litellm_model_id, liteLLMPayload);
 
+        // Flush LiteLLM's Redis cache so all proxy pods pick up the updated model
+        await fastify.flushLiteLLMCache();
+
         // Log admin action
         await fastify.dbUtils.query(
           `INSERT INTO audit_logs (user_id, action, resource_type, resource_id, metadata)
@@ -482,6 +488,9 @@ const adminModelsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
           await liteLLMService.deleteModel(modelRecord.litellm_model_id);
           fastify.log.info({ modelId, litellmModelId: modelRecord.litellm_model_id }, 'Model deleted from LiteLLM');
+
+          // Flush LiteLLM's Redis cache so all proxy pods stop serving the deleted model
+          await fastify.flushLiteLLMCache();
         } catch (deleteError: any) {
           // If model is already gone from LiteLLM (404), proceed with local cleanup
           if (deleteError.statusCode === 404 || (deleteError.message && deleteError.message.includes('not found'))) {

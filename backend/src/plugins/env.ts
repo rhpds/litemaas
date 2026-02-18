@@ -30,6 +30,10 @@ const envSchema = Type.Object({
   OAUTH_CALLBACK_URL: Type.String({ default: 'http://localhost:8081/api/auth/callback' }),
   K8S_API_SKIP_TLS_VERIFY: Type.Optional(Type.String()),
 
+  // Redis (optional — used to flush LiteLLM's cache after model CRUD)
+  REDIS_HOST: Type.Optional(Type.String()),
+  REDIS_PORT: Type.String({ default: '6379' }),
+
   // LiteLLM
   LITELLM_API_URL: Type.String({ default: 'http://localhost:4000' }),
   LITELLM_API_KEY: Type.Optional(Type.String()),
