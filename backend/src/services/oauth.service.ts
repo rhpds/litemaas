@@ -542,11 +542,34 @@ export class OAuthService extends BaseService {
     const initialAdminRoles = this.getInitialAdminRoles(userInfo.preferred_username);
     const derivedRoles = this.mergeRoles(openShiftRoles, initialAdminRoles);
 
-    // Check if user exists in database
-    const existingUser = await this.fastify.dbUtils.queryOne(
+    // Check if user exists in database by OAuth ID
+    let existingUser = await this.fastify.dbUtils.queryOne(
       'SELECT * FROM users WHERE oauth_id = $1 AND oauth_provider = $2',
       [userInfo.sub, 'openshift'],
     );
+
+    // Fallback: look up by email to handle users migrated by upgrade script
+    // (migration sets oauth_id = 'migration-<uuid>' which won't match the real OAuth sub)
+    if (!existingUser) {
+      const email = userInfo.email || userInfo.preferred_username;
+      if (email) {
+        existingUser = await this.fastify.dbUtils.queryOne(
+          'SELECT * FROM users WHERE email = $1',
+          [email],
+        );
+        if (existingUser) {
+          // Update oauth_id to the real value from the OAuth provider
+          await this.fastify.dbUtils.query(
+            'UPDATE users SET oauth_id = $1, oauth_provider = $2, updated_at = NOW() WHERE id = $3',
+            [userInfo.sub, 'openshift', existingUser.id as string],
+          );
+          this.fastify.log.info(
+            { userId: existingUser.id as string, email },
+            'Linked existing user to OAuth provider (migration upgrade)',
+          );
+        }
+      }
+    }
 
     let user: {
       id: string;
