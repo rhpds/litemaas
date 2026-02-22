@@ -737,6 +737,23 @@ COMMENT ON COLUMN daily_usage_cache.is_complete IS 'False for current day (needs
 CREATE INDEX IF NOT EXISTS idx_api_keys_lite_llm_key ON api_keys(lite_llm_key_value);
 `;
 
+// System settings table (key-value store for admin-configurable settings)
+export const systemSettingsTable = `
+CREATE TABLE IF NOT EXISTS system_settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value JSONB NOT NULL DEFAULT '{}',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_by UUID REFERENCES users(id)
+);
+
+COMMENT ON TABLE system_settings IS 'Key-value store for admin-configurable system settings';
+
+-- Seed default api_key_defaults row
+INSERT INTO system_settings (key, value)
+VALUES ('api_key_defaults', '{}')
+ON CONFLICT (key) DO NOTHING;
+`;
+
 // Main migration function
 export const applyMigrations = async (dbUtils: DatabaseUtils) => {
   console.log('🚀 Starting database migrations...');
@@ -808,6 +825,9 @@ export const applyMigrations = async (dbUtils: DatabaseUtils) => {
 
     console.log('🔄 Migrating existing subscriptions for approval workflow...');
     await dbUtils.query(migrateExistingSubscriptions);
+
+    console.log('⚙️ Creating system_settings table...');
+    await dbUtils.query(systemSettingsTable);
 
     console.log('✅ Database migrations completed successfully!');
   } catch (error) {
